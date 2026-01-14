@@ -31,4 +31,4 @@ canvas auth login   # Authenticate
 
 ## Config
 
-Credentials stored at `~/.config/canvas-cli/config.json` or via `CANVAS_BASE_URL` and `CANVAS_TOKEN` env vars.
+Credentials stored at `~/.config/canvas/config.json` or via `CANVAS_BASE_URL` and `CANVAS_TOKEN` env vars.
