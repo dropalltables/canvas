@@ -279,7 +279,11 @@ func runAssignmentsDone(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("not found")
 	}
 
-	if err := client.MarkDone(target.PlannableType, target.PlannableID); err != nil {
+	var overrideID *int
+	if target.Override != nil {
+		overrideID = &target.Override.ID
+	}
+	if err := client.MarkDone(target.PlannableType, target.PlannableID, overrideID); err != nil {
 		if apiErr, ok := err.(*api.APIError); ok && apiErr.IsUnauthorized() {
 			ui.Error("Unauthorized. Run 'canvas auth login' to authenticate.")
 			return err

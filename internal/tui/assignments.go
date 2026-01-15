@@ -142,7 +142,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) markDone(a api.Assignment) tea.Cmd {
 	return func() tea.Msg {
-		err := m.client.MarkDone(a.PlannableType, a.PlannableID)
+		var overrideID *int
+		if a.Override != nil {
+			overrideID = &a.Override.ID
+		}
+		err := m.client.MarkDone(a.PlannableType, a.PlannableID, overrideID)
 		if err != nil {
 			return errMsg(err)
 		}

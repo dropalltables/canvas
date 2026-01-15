@@ -186,13 +186,24 @@ func isValidAssignment(a Assignment) bool {
 	return true
 }
 
-func (c *Client) MarkDone(plannableType string, plannableID int) error {
+func (c *Client) MarkDone(plannableType string, plannableID int, overrideID *int) error {
 	data := url.Values{}
-	data.Set("planner_override[plannable_type]", plannableType)
-	data.Set("planner_override[plannable_id]", fmt.Sprintf("%d", plannableID))
-	data.Set("planner_override[marked_complete]", "true")
+	data.Set("marked_complete", "true")
 
-	resp, err := c.do("POST", "/planner/overrides", strings.NewReader(data.Encode()), "application/x-www-form-urlencoded")
+	var path string
+	var method string
+
+	if overrideID != nil {
+		path = fmt.Sprintf("/planner/overrides/%d", *overrideID)
+		method = "PUT"
+	} else {
+		path = "/planner/overrides"
+		method = "POST"
+		data.Set("plannable_type", plannableType)
+		data.Set("plannable_id", fmt.Sprintf("%d", plannableID))
+	}
+
+	resp, err := c.do(method, path, strings.NewReader(data.Encode()), "application/x-www-form-urlencoded")
 	if err != nil {
 		return err
 	}
