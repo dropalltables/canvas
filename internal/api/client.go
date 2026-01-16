@@ -38,9 +38,12 @@ type Assignment struct {
 	Plannable     Plannable    `json:"plannable"`
 	ContextName   string       `json:"context_name"`
 	ContextType   string       `json:"context_type"`
+	CourseID      int          `json:"course_id"`
 	DueAt         *time.Time   `json:"plannable_date"`
+	HTMLURL       string       `json:"html_url"`
 	Completed     bool         `json:"-"`
 	Submitted     bool         `json:"-"`
+	Locked        bool         `json:"-"`
 	Override      *Override    `json:"planner_override"`
 	Submissions   *Submissions `json:"submissions"`
 }
@@ -108,22 +111,29 @@ func (c *Client) do(method, path string, body io.Reader, contentType string) (*h
 
 	if resp.StatusCode >= 400 {
 		defer resp.Body.Close()
-		bodyBytes, _ := io.ReadAll(resp.Body)
+		bodyBytes, readErr := io.ReadAll(io.LimitReader(resp.Body, 64*1024))
+		msg := string(bodyBytes)
+		if readErr != nil {
+			msg = fmt.Sprintf("%s (error reading body: %v)", msg, readErr)
+		}
 		return nil, &APIError{
 			StatusCode: resp.StatusCode,
-			Message:    string(bodyBytes),
+			Message:    msg,
 		}
 	}
 
 	return resp, nil
 }
 
-func (c *Client) GetAssignments(pastDays, futureDays int) ([]Assignment, error) {
-	now := time.Now()
+func plannerItemsPath(now time.Time, pastDays, futureDays int) string {
 	start := now.AddDate(0, 0, -pastDays).Format("2006-01-02")
 	end := now.AddDate(0, 0, futureDays).Format("2006-01-02")
+	return fmt.Sprintf("/planner/items?start_date=%s&end_date=%s&per_page=100", start, end)
+}
 
-	path := fmt.Sprintf("/planner/items?start_date=%s&end_date=%s&per_page=100", start, end)
+func (c *Client) GetAssignments(pastDays, futureDays int) ([]Assignment, error) {
+	now := time.Now()
+	path := plannerItemsPath(now, pastDays, futureDays)
 	resp, err := c.do("GET", path, nil, "")
 	if err != nil {
 		return nil, err
@@ -137,7 +147,7 @@ func (c *Client) GetAssignments(pastDays, futureDays int) ([]Assignment, error) 
 
 	var filtered []Assignment
 	for _, item := range items {
-		if !isValidAssignment(item) {
+		if !isValidAssignment(item, now) {
 			continue
 		}
 		if item.Override != nil {
@@ -155,13 +165,10 @@ func (c *Client) GetAssignments(pastDays, futureDays int) ([]Assignment, error) 
 	return filtered, nil
 }
 
-func isValidAssignment(a Assignment) bool {
-	validTypes := map[string]bool{
-		"assignment":        true,
-		"quiz":              true,
-		"discussion_topic":  true,
-	}
-	if !validTypes[a.PlannableType] {
+func isValidAssignment(a Assignment, now time.Time) bool {
+	switch a.PlannableType {
+	case "assignment", "quiz", "discussion_topic":
+	default:
 		return false
 	}
 
@@ -169,13 +176,7 @@ func isValidAssignment(a Assignment) bool {
 		return false
 	}
 
-	now := time.Now()
-
 	if a.Plannable.LockAt != nil && now.After(*a.Plannable.LockAt) {
-		return false
-	}
-
-	if a.Plannable.UnlockAt != nil && now.Before(*a.Plannable.UnlockAt) {
 		return false
 	}
 
@@ -216,12 +217,31 @@ func (c *Client) BaseURL() string {
 	return strings.TrimSuffix(c.baseURL, "/api/v1")
 }
 
-func (c *Client) GetRawPlannerItems(pastDays, futureDays int) ([]byte, error) {
-	now := time.Now()
-	start := now.AddDate(0, 0, -pastDays).Format("2006-01-02")
-	end := now.AddDate(0, 0, futureDays).Format("2006-01-02")
+type AssignmentDetail struct {
+	ID          int        `json:"id"`
+	Name        string     `json:"name"`
+	Description string     `json:"description"`
+	CourseID    int        `json:"course_id"`
+	UnlockAt    *time.Time `json:"unlock_at"`
+}
 
-	path := fmt.Sprintf("/planner/items?start_date=%s&end_date=%s&per_page=100", start, end)
+func (c *Client) GetAssignmentDetail(courseID, assignmentID int) (*AssignmentDetail, error) {
+	path := fmt.Sprintf("/courses/%d/assignments/%d", courseID, assignmentID)
+	resp, err := c.do("GET", path, nil, "")
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var detail AssignmentDetail
+	if err := json.NewDecoder(resp.Body).Decode(&detail); err != nil {
+		return nil, err
+	}
+	return &detail, nil
+}
+
+func (c *Client) GetRawPlannerItems(pastDays, futureDays int) ([]byte, error) {
+	path := plannerItemsPath(time.Now(), pastDays, futureDays)
 	resp, err := c.do("GET", path, nil, "")
 	if err != nil {
 		return nil, err
