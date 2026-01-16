@@ -52,7 +52,7 @@ func fetchDescription(logger *log.Logger, client *api.Client, a api.Assignment) 
 		parts := linkRegex.FindStringSubmatch(match)
 		if len(parts) == 3 {
 			urls = append(urls, parts[2])
-			return ""
+			return parts[1]
 		}
 		return match
 	})
