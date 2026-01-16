@@ -4,29 +4,28 @@ import (
 	"os/exec"
 	"regexp"
 	"runtime"
-	"strings"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 )
 
-var linkRegex = regexp.MustCompile(`\[([^\]]+)\]\(([^)]+)\)`)
+var linkRegex = regexp.MustCompile(`\[([^\]]+)\]\(([^\s)]+)(?:\s+"[^"]*")?\)`)
 
 func wrapText(text string, width int) string {
 	if width <= 0 {
 		return text
 	}
-	var result strings.Builder
-	var lineLen int
-	for i, word := range strings.Fields(text) {
-		if lineLen > 0 && lineLen+1+len(word) > width {
-			result.WriteRune('\n')
-			lineLen = 0
-		} else if i > 0 {
-			result.WriteRune(' ')
-			lineLen++
+	return ansi.Wrap(text, width, "/?&=#:.")
+}
+
+func getNumberKey(msg tea.KeyMsg) int {
+	if len(msg.String()) == 1 {
+		c := msg.String()[0]
+		if c >= '1' && c <= '9' {
+			return int(c - '0')
 		}
-		result.WriteString(word)
-		lineLen += len(word)
 	}
-	return result.String()
+	return 0
 }
 
 func openBrowser(url string) {

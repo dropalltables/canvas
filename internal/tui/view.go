@@ -55,15 +55,17 @@ func (m Model) View() string {
 			checkbox = "[!]"
 		}
 		dueStr := ""
-		if a.DueAt != nil {
-			dueStr = a.DueAt.Format("Jan 02 15:04")
+		if a.Locked && a.UnlockAt != nil {
+			dueStr = a.UnlockAt.Local().Format("Jan 02 15:04")
+		} else if a.DueAt != nil {
+			dueStr = a.DueAt.Local().Format("Jan 02 15:04")
 		}
 
 		line := fmt.Sprintf("%s%s %s  %s", cursor, checkbox, dueStr, a.Plannable.Title)
-		if a.Completed || a.Locked {
-			line = doneStyle.Render(line)
-		} else if i == m.cursor {
+		if i == m.cursor {
 			line = selectedStyle.Render(line)
+		} else if a.Completed || a.Locked {
+			line = doneStyle.Render(line)
 		} else {
 			line = fmt.Sprintf("%s%s %s  %s", cursor, checkbox, dateStyle.Render(dueStr), a.Plannable.Title)
 		}
@@ -85,7 +87,7 @@ func (m Model) View() string {
 	if m.showLocked {
 		toggleLocked = "hide locked"
 	}
-	b.WriteString(helpStyle.Render(fmt.Sprintf("j/k: navigate  enter: open  d/x/space: mark done  D: %s  L: %s  q: quit", toggleDone, toggleLocked)))
+	b.WriteString(helpStyle.Render(fmt.Sprintf("j/k: navigate  enter: open  1-9: open URL  d/x/space: done  D: %s  L: %s  q: quit", toggleDone, toggleLocked)))
 	b.WriteString("\n")
 
 	return b.String()
@@ -93,9 +95,22 @@ func (m Model) View() string {
 
 func (m Model) renderDesc(desc string, width int) string {
 	var b strings.Builder
+	urlPrefix := "[URL]"
+	urlNum := 0
+
 	for _, line := range strings.Split(desc, "\n") {
-		if strings.HasPrefix(line, "- ") {
-			b.WriteString("    " + descStyle.Render(line) + "\n")
+		if strings.HasPrefix(line, urlPrefix) {
+			urlNum++
+			url := line[len(urlPrefix):]
+			prefix := fmt.Sprintf("[%d] ", urlNum)
+			wrapped := wrapText(url, width-len(prefix))
+			for i, w := range strings.Split(wrapped, "\n") {
+				if i == 0 {
+					b.WriteString("    " + descStyle.Render(prefix+w) + "\n")
+				} else {
+					b.WriteString("    " + descStyle.Render("    "+w) + "\n")
+				}
+			}
 		} else {
 			wrapped := wrapText(line, width)
 			for _, w := range strings.Split(wrapped, "\n") {
@@ -104,4 +119,14 @@ func (m Model) renderDesc(desc string, width int) string {
 		}
 	}
 	return b.String()
+}
+
+func extractURLs(desc string) []string {
+	var urls []string
+	for _, line := range strings.Split(desc, "\n") {
+		if strings.HasPrefix(line, "[URL]") {
+			urls = append(urls, line[5:])
+		}
+	}
+	return urls
 }

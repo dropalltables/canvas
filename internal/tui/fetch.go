@@ -13,21 +13,33 @@ import (
 	"github.com/dropalltables/canvas/internal/api"
 )
 
-func fetchDescription(logger *log.Logger, client *api.Client, a api.Assignment) (string, bool) {
+type fetchResult struct {
+	desc     string
+	locked   bool
+	unlockAt *time.Time
+}
+
+func fetchDescription(logger *log.Logger, client *api.Client, a api.Assignment) fetchResult {
+	assignmentID := a.PlannableID
 	if a.PlannableType != "assignment" {
-		return "", false
+		if a.Plannable.AssignmentID == nil {
+			locked := a.Plannable.UnlockAt != nil && time.Now().Before(*a.Plannable.UnlockAt)
+			return fetchResult{locked: locked, unlockAt: a.Plannable.UnlockAt}
+		}
+		assignmentID = *a.Plannable.AssignmentID
 	}
 
-	detail, err := client.GetAssignmentDetail(a.CourseID, a.PlannableID)
+	detail, err := client.GetAssignmentDetail(a.CourseID, assignmentID)
 	if err != nil {
 		logger.Warn("failed to fetch detail", "title", a.Plannable.Title, "error", err)
-		return "", false
+		locked := a.Plannable.UnlockAt != nil && time.Now().Before(*a.Plannable.UnlockAt)
+		return fetchResult{locked: locked, unlockAt: a.Plannable.UnlockAt}
 	}
 
 	locked := detail.UnlockAt != nil && time.Now().Before(*detail.UnlockAt)
 
 	if detail.Description == "" {
-		return "", locked
+		return fetchResult{locked: locked, unlockAt: detail.UnlockAt}
 	}
 
 	md, _ := htmltomd.ConvertString(detail.Description)
@@ -40,7 +52,7 @@ func fetchDescription(logger *log.Logger, client *api.Client, a api.Assignment) 
 		parts := linkRegex.FindStringSubmatch(match)
 		if len(parts) == 3 {
 			urls = append(urls, parts[2])
-			return parts[1]
+			return ""
 		}
 		return match
 	})
@@ -54,10 +66,10 @@ func fetchDescription(logger *log.Logger, client *api.Client, a api.Assignment) 
 	desc := strings.Join(words, " ")
 
 	for _, u := range urls {
-		desc += "\n- " + u
+		desc += "\n[URL]" + u
 	}
 
-	return desc, locked
+	return fetchResult{desc: desc, locked: locked, unlockAt: detail.UnlockAt}
 }
 
 func Run(client *api.Client) error {
@@ -76,20 +88,26 @@ func Run(client *api.Client) error {
 	}
 	logger.Info("fetched assignments", "count", len(assignments))
 
+	now := time.Now()
 	var toFetch []int
 	for i, a := range assignments {
 		if a.PlannableType == "assignment" {
 			toFetch = append(toFetch, i)
+		} else if a.Plannable.AssignmentID != nil {
+			toFetch = append(toFetch, i)
+		} else if a.Plannable.UnlockAt != nil && now.Before(*a.Plannable.UnlockAt) {
+			assignments[i].Locked = true
 		}
 	}
 	total := len(toFetch)
 
 	type result struct {
-		index  int
-		id     int
-		desc   string
-		locked bool
-		title  string
+		index    int
+		id       int
+		desc     string
+		locked   bool
+		unlockAt *time.Time
+		title    string
 	}
 
 	var wg sync.WaitGroup
@@ -109,14 +127,15 @@ func Run(client *api.Client) error {
 			num := fetchNum
 			mu.Unlock()
 			logger.Info(fmt.Sprintf("fetching (%d/%d)", num, total), "title", assignment.Plannable.Title)
-			desc, locked := fetchDescription(logger, client, assignment)
+			fr := fetchDescription(logger, client, assignment)
 			<-sem
 			results <- result{
-				index:  idx,
-				id:     assignment.PlannableID,
-				desc:   desc,
-				locked: locked,
-				title:  assignment.Plannable.Title,
+				index:    idx,
+				id:       assignment.PlannableID,
+				desc:     fr.desc,
+				locked:   fr.locked,
+				unlockAt: fr.unlockAt,
+				title:    assignment.Plannable.Title,
 			}
 		}(i, a)
 	}
@@ -136,6 +155,7 @@ func Run(client *api.Client) error {
 		}
 		if r.locked {
 			assignments[r.index].Locked = true
+			assignments[r.index].UnlockAt = r.unlockAt
 		}
 	}
 

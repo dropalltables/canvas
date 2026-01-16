@@ -44,6 +44,7 @@ type Assignment struct {
 	Completed     bool         `json:"-"`
 	Submitted     bool         `json:"-"`
 	Locked        bool         `json:"-"`
+	UnlockAt      *time.Time   `json:"-"`
 	Override      *Override    `json:"planner_override"`
 	Submissions   *Submissions `json:"submissions"`
 }
@@ -70,19 +71,20 @@ func (s *Submissions) UnmarshalJSON(data []byte) error {
 }
 
 type Plannable struct {
-	ID        int        `json:"id"`
-	Title     string     `json:"title"`
-	DueAt     *time.Time `json:"due_at"`
-	LockAt    *time.Time `json:"lock_at"`
-	UnlockAt  *time.Time `json:"unlock_at"`
-	Published *bool      `json:"published"`
+	ID           int        `json:"id"`
+	Title        string     `json:"title"`
+	DueAt        *time.Time `json:"due_at"`
+	LockAt       *time.Time `json:"lock_at"`
+	UnlockAt     *time.Time `json:"unlock_at"`
+	Published    *bool      `json:"published"`
+	AssignmentID *int       `json:"assignment_id"`
 }
 
 type Override struct {
-	ID            int  `json:"id"`
-	PlannableID   int  `json:"plannable_id"`
-	PlannableType string `json:"plannable_type"`
-	MarkedComplete bool `json:"marked_complete"`
+	ID             int    `json:"id"`
+	PlannableID    int    `json:"plannable_id"`
+	PlannableType  string `json:"plannable_type"`
+	MarkedComplete bool   `json:"marked_complete"`
 }
 
 func NewClient(cfg *config.Config) *Client {
@@ -188,8 +190,16 @@ func isValidAssignment(a Assignment, now time.Time) bool {
 }
 
 func (c *Client) MarkDone(plannableType string, plannableID int, overrideID *int) error {
+	return c.setComplete(plannableType, plannableID, overrideID, true)
+}
+
+func (c *Client) MarkUndone(plannableType string, plannableID int, overrideID *int) error {
+	return c.setComplete(plannableType, plannableID, overrideID, false)
+}
+
+func (c *Client) setComplete(plannableType string, plannableID int, overrideID *int, complete bool) error {
 	data := url.Values{}
-	data.Set("marked_complete", "true")
+	data.Set("marked_complete", fmt.Sprintf("%t", complete))
 
 	var path string
 	var method string

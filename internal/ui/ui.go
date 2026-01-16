@@ -7,12 +7,12 @@ import (
 )
 
 var (
-	cyan    = color.New(color.FgCyan)
-	yellow  = color.New(color.FgYellow)
-	green   = color.New(color.FgGreen)
-	red     = color.New(color.FgRed)
-	bold    = color.New(color.Bold)
-	faint   = color.New(color.Faint)
+	cyan   = color.New(color.FgCyan)
+	yellow = color.New(color.FgYellow)
+	green  = color.New(color.FgGreen)
+	red    = color.New(color.FgRed)
+	bold   = color.New(color.Bold)
+	faint  = color.New(color.Faint)
 )
 
 func Question(format string, a ...interface{}) {

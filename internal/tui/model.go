@@ -32,6 +32,7 @@ type Model struct {
 
 type errMsg error
 type doneMsg int
+type undoneMsg int
 
 func New(client *api.Client, assignments []api.Assignment, descCache map[int]string) Model {
 	return Model{
@@ -67,6 +68,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cursor = len(visible) - 1
 		}
 
+	case undoneMsg:
+		for i := range m.assignments {
+			if m.assignments[i].PlannableID == int(msg) {
+				m.assignments[i].Completed = false
+				break
+			}
+		}
+
 	case tea.KeyMsg:
 		visible := m.visibleAssignments()
 		switch {
@@ -76,8 +85,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cursor--
 		case key.Matches(msg, keys.Down) && m.cursor < len(visible)-1:
 			m.cursor++
-		case key.Matches(msg, keys.Done) && m.cursor < len(visible) && !visible[m.cursor].Completed:
+		case key.Matches(msg, keys.Done) && m.cursor < len(visible) && !visible[m.cursor].Completed && !visible[m.cursor].Locked:
 			return m, m.markDone(visible[m.cursor])
+		case key.Matches(msg, keys.Done) && m.cursor < len(visible) && visible[m.cursor].Completed:
+			return m, m.markUndone(visible[m.cursor])
 		case key.Matches(msg, keys.ToggleDone):
 			m.showDone = !m.showDone
 			visible = m.visibleAssignments()
@@ -96,6 +107,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case key.Matches(msg, keys.Open) && m.cursor < len(visible) && visible[m.cursor].HTMLURL != "":
 			openBrowser(m.baseURL + visible[m.cursor].HTMLURL)
+		default:
+			if m.cursor < len(visible) {
+				if num := getNumberKey(msg); num >= 1 && num <= 9 {
+					a := visible[m.cursor]
+					if desc := m.descCache[a.PlannableID]; desc != "" {
+						if urls := extractURLs(desc); num <= len(urls) {
+							openBrowser(urls[num-1])
+						}
+					}
+				}
+			}
 		}
 	}
 	return m, nil
@@ -111,6 +133,19 @@ func (m Model) markDone(a api.Assignment) tea.Cmd {
 			return errMsg(err)
 		}
 		return doneMsg(a.PlannableID)
+	}
+}
+
+func (m Model) markUndone(a api.Assignment) tea.Cmd {
+	return func() tea.Msg {
+		var overrideID *int
+		if a.Override != nil {
+			overrideID = &a.Override.ID
+		}
+		if err := m.client.MarkUndone(a.PlannableType, a.PlannableID, overrideID); err != nil {
+			return errMsg(err)
+		}
+		return undoneMsg(a.PlannableID)
 	}
 }
 

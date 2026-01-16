@@ -15,12 +15,12 @@ import (
 )
 
 var (
-	flagFormat  string
-	flagPast    int
-	flagFuture  int
-	flagAll     bool
-	flagCourse  string
-	flagType    string
+	flagFormat string
+	flagPast   int
+	flagFuture int
+	flagAll    bool
+	flagCourse string
+	flagType   string
 )
 
 var assignmentsCmd = &cobra.Command{
